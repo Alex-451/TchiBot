@@ -156,31 +156,20 @@
 
 // clang-format on
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <string.h>
+#include <limits.h>  // UINT_MAX
+#include <stdbool.h> // bool, true, false
+#include <stddef.h>  // size_t, NULL
+#include <stdint.h>  // uint8_t, uint32_t, uint64_t...
+#include <string.h>  // memcpy, memset, memcmp
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-/* ================================================== */
-/* ================================================== */
-/* ================================================== */
-
-/**
- * A type used internally for wide-width PRNG arithmetic.
- *
- * Evaluates to `uint64_t` on 64-bit architectures (x86-64, AArch64), or
- * `uint32_t` otherwise (8-bit AVR of ATmega's, 32-bit Xtensa of ESP, etc.).
- */
-#if UINTPTR_MAX == 0xffffffffffffffff
-  typedef uint64_t derdec_uintmax;
-#else
-typedef uint32_t derdec_uintmax;
-#endif
+  /* ================================================== */
+  /* ================================================== */
+  /* ================================================== */
 
   typedef enum derdec_err
   {
@@ -228,7 +217,8 @@ typedef uint32_t derdec_uintmax;
     const uint8_t *end;
   } derdec_tlv;
 
-  const char *derdec_tlv_type_str(const enum derdec_tlv_type type);
+  const char *derdec_tlv_type_str(enum derdec_tlv_type type);
+
   derdec_err derdec_decode_tlv(derdec_tlv *result, const uint8_t **data_curr,
                                const uint8_t *data_end);
 
@@ -254,7 +244,7 @@ typedef uint32_t derdec_uintmax;
   /* -------------------------------------------------- */
 
   derdec_err derdec_pkcs1(uint8_t *buf, size_t buf_len, const uint8_t *plaintext,
-                          size_t plaintext_len, derdec_uintmax prng_seed);
+                          size_t plaintext_len, uint32_t prng_seed);
 
   /* ================================================== */
   /* ================================================== */
@@ -292,46 +282,42 @@ typedef uint32_t derdec_uintmax;
 
   /* -------------------------------------------------- */
 
-  static const char *derdec_tlv_type_strlookup[] = {
-      "INTEGER",
-      "BITSTRING",
-      "OCTETSTRING",
-      "NULL",
-      "OBJECT",
-
-      "UTF8STRING",
-      "PRINTABLESTRING",
-      "IA5STRING",
-
-      "UTCTIME",
-      "GENERALIZEDTIME",
-
-      "SEQUENCE",
-      "SET",
+  struct derdec_tlv_type_strlookup_entry
+  {
+    const char *str;
+    derdec_tlv_type type;
   };
 
+  static const struct derdec_tlv_type_strlookup_entry
+      derdec_tlv_type_strlookup[] = {
+          {"INTEGER", DERDEC_TLV_INTEGER},
+          {"BITSTRING", DERDEC_TLV_BITSTRING},
+          {"OCTETSTRING", DERDEC_TLV_OCTETSTRING},
+          {"NULL", DERDEC_TLV_NULL},
+          {"OBJECT", DERDEC_TLV_OBJECT},
+          {"UTF8STRING", DERDEC_TLV_UTF8STRING},
+          {"PRINTABLESTRING", DERDEC_TLV_PRINTABLESTRING},
+          {"IA5STRING", DERDEC_TLV_IA5STRING},
+          {"UTCTIME", DERDEC_TLV_UTCTIME},
+          {"GENERALIZEDTIME", DERDEC_TLV_GENERALIZEDTIME},
+          {"SEQUENCE", DERDEC_TLV_SEQUENCE},
+          {"SET", DERDEC_TLV_SET},
+  };
 
-
-  const char *derdec_tlv_type_str(const enum derdec_tlv_type type)
+  const char *derdec_tlv_type_str(enum derdec_tlv_type type)
   {
-    static const char **const lookup_start = &derdec_tlv_type_strlookup[0];
-    static const char **const lookup_end =
-        &derdec_tlv_type_strlookup[sizeof(derdec_tlv_type_strlookup) /
-                                   sizeof(derdec_tlv_type_strlookup[0])];
+    static const size_t derdec_tlv_type_strlookup_count =
+        sizeof(derdec_tlv_type_strlookup) / sizeof(derdec_tlv_type_strlookup)[0];
 
-    const char **const str_loc = &derdec_tlv_type_strlookup[type];
-    if (str_loc < lookup_start || str_loc >= lookup_end)
+    for (size_t i = 0; i < derdec_tlv_type_strlookup_count; ++i)
     {
-      return "";
+      if (derdec_tlv_type_strlookup[i].type == type)
+      {
+        return derdec_tlv_type_strlookup[i].str;
+      }
     }
 
-    const char *const str = *str_loc;
-    if (str == NULL)
-    {
-      return "_UNKNOWN";
-    }
-
-    return str;
+    return "";
   }
 
   derdec_err derdec_decode_tlv(derdec_tlv *result, const uint8_t **data_curr,
@@ -507,11 +493,16 @@ typedef uint32_t derdec_uintmax;
         0x01,
     };
 
+    if (pkey == NULL)
+    {
+      return false;
+    }
+
     const uint8_t *const oid_start = pkey->object_id.start;
     const uint8_t *const oid_end = pkey->object_id.end;
 
-    if (pkey == NULL || (pkey->object_id.type != DERDEC_TLV_OBJECT ||
-                         oid_start == NULL || oid_end <= oid_start))
+    if ((pkey->object_id.type != DERDEC_TLV_OBJECT || oid_start == NULL ||
+         oid_end <= oid_start))
     {
       return false;
     }
@@ -656,14 +647,14 @@ typedef uint32_t derdec_uintmax;
 
   // WARNING: this is presumably not cryptographically secure.
   derdec_err derdec_pkcs1(uint8_t *buf, size_t buf_len, const uint8_t *plaintext,
-                          size_t plaintext_len, derdec_uintmax prng_seed)
+                          size_t plaintext_len, uint32_t prng_seed)
   {
     if (buf == NULL || buf_len == 0 || plaintext == NULL || plaintext_len == 0)
     {
       return DERDEC_MISUSE;
     }
 
-    // Only RSA-2048 (with `uint8_t[256]` buffers) is supported.
+    // Only RSA-2048 (with `uint8_t[256]` buffers) is (currently) supported.
     if (buf_len != 256)
     {
       return DERDEC_UNSUPPORTED;
@@ -683,7 +674,7 @@ typedef uint32_t derdec_uintmax;
     // Setting the primitive pseudo-random number generator (PRNG).
     //
     // NOTE: loosely based on 'xorshift32'.
-    derdec_uintmax prng_value = prng_seed;
+    uint32_t prng_value = prng_seed;
     if (prng_value == 0)
     {
       // If PRNG seed hasn't been provided, we need some (dumb) way to source
@@ -691,22 +682,23 @@ typedef uint32_t derdec_uintmax;
       //
       // TODO(pr3): do this better...
 
-      prng_value = ((derdec_uintmax)buf_curr << 16) ^ ((derdec_uintmax)&buf_curr);
-      prng_value >>= 12;
-      prng_value += 1534219;
+      prng_value = ((uint32_t)plaintext[0] * 90017) + 1534219;
     }
-    prng_value = ((prng_value >> 7) + 1534219) * 531799;
+    else
+    {
+      prng_value = (((prng_value + 71339) * 531799) << 3) | 1;
+    }
 
     *buf_curr++ = 0x00;
     *buf_curr++ = 0x02;
 
     for (size_t i = 0; i < padding_len; ++i)
     {
-      prng_value ^= prng_value >> 12;
-      prng_value ^= prng_value << 25;
-      prng_value ^= prng_value >> 27;
+      prng_value ^= prng_value << 13;
+      prng_value ^= prng_value >> 17;
+      prng_value ^= prng_value << 5;
 
-      *buf_curr++ = (((prng_value * 0x2545f4914f6cdd1dULL) >> 8) & 0xff) | 0x01;
+      *buf_curr++ = ((prng_value >> 7) & 0xff) | 1;
     }
 
     *buf_curr++ = 0x00;

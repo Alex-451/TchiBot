@@ -5,7 +5,8 @@
 #include <ESP8266WiFi.h>
 #include <BearSSLHelpers.h>
 #include <bearssl/bearssl.h>
-#include "derdec.h"
+#include <derdec.h>
+#include <tchibo_wrapper.h>
 
 #pragma region JSON
 
@@ -549,34 +550,19 @@ void setup()
   strncpy(userName, tchibo_user_name.getValue(), sizeof(userName));
   strncpy(password, tchibo_password.getValue(), sizeof(password));
 
-  derdec_pkey pkey;
+  Serial.print("Client session id:");
+  srand(time(NULL));
 
-  derdec_err err;
-  if ((err = derdec_decode_pkey(&pkey, raw_pkey, raw_pkey_len)) !=
-      DERDEC_OK)
+  char sid[40];
+  for (size_t i = 0; i < 5; i++)
   {
-    fprintf(stderr, "[!] derdec_decode_pkey failed: %s\n", derdec_err_str(err));
-  }
+    if (tchibo_get_client_session_id(sid, sizeof(sid)) != 0)
+    {
+      fprintf(stderr, "oh no.\n");
+    }
 
-  if (!derdec_pkey_is_pkcs1(&pkey))
-  {
-    fprintf(stderr, "[!] pkey is not a PKCS1 public key\n");
+    printf("%s\n", sid);
   }
-
-  const char *plaintext = "test";
-  uint8_t buf[256];
-  if (encrypt_with_bear(buf, sizeof(buf), plaintext, strlen(plaintext),
-                        &pkey) != 0)
-  {
-    fprintf(stderr, "[!] encrypt_with_bear failed\n");
-  }
-
-  printf("testrerere");
-  for (size_t i = 0; i < sizeof(buf); ++i)
-  {
-    printf("%02x", buf[i]);
-  }
-  printf("\n");
 
   Serial.print("userName: ");
   Serial.println(userName);
