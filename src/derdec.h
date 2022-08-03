@@ -7,7 +7,8 @@
  *
  * MIT License
  *
- * Copyright (c) 2022 by pr3 (https://discord.com/users/552136433742381066 👀)
+ * Copyright (c) 2022 by rubpy / pr3
+ * (https://github.com/rubpy/derdec)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -44,8 +45,9 @@
 
 /**
  * @file derdec.h
- * @brief A silly single-header library for extracting modulus N & exponent E
- *        arbitrary-precision integers from ASN.1 DER-encoded RSA public keys.
+ * @brief A silly single-header library for extracting (decoding)
+ *        modulus N & exponent E arbitrary-precision integers from
+ *        ASN.1 DER-encoded RSA public keys.
  *
  * @warning Yeah, don't use this in production, or wherever you need
  *          field-tested cryptographic security.
@@ -171,6 +173,15 @@ extern "C"
   /* ================================================== */
   /* ================================================== */
 
+  /**
+   * A list of all possible status codes/return values returned by common
+   * functions of the API.
+   *
+   * A zero, or `DERDEC_OK`, indicates success (i.e., no error).
+   *
+   * NOTE: for dynamic translation of 'error value' to 'error string
+   * representation', see: `derdec_err_str`.
+   */
   typedef enum derdec_err
   {
     DERDEC_OK = 0x0000,
@@ -186,10 +197,24 @@ extern "C"
     DERDEC_RSA_TOOLONG = 0x0100, // RSA message too long
   } derdec_err;
 
+  /**
+   * Returns an 'error string representation' for a given 'error value'.
+   *
+   * For example, returns "ok" for `DERDEC_OK`, and "RSA message too long" for
+   * `DERDEC_RSA_TOOLONG`.
+   *
+   * NOTE: this function will return an empty string (""), if an incorrect 'error
+   * value' is given.
+   */
   const char *derdec_err_str(const enum derdec_err err);
 
   /* -------------------------------------------------- */
 
+  /**
+   * Possible (recognized) types of DER TLV's.
+   *
+   * NOTE: only a subset of these is used/supported.
+   */
   typedef enum derdec_tlv_type
   {
     DERDEC_TLV_INTEGER = 0x02,
@@ -209,21 +234,104 @@ extern "C"
     DERDEC_TLV_SET = 0x31,
   } derdec_tlv_type;
 
+  /**
+   * Wrapper for an individual TLV (type-length-value)-encoded item contained
+   * within a raw public key.
+   *
+   * It is valid so long as the original, underlying array of bytes (e.g., parser
+   * input) stays valid.
+   */
   typedef struct derdec_tlv
   {
+    /**
+     * Type of the TLV.
+     *
+     * See `enum derdec_tlv_type` for a list of possible values.
+     */
     derdec_tlv_type type;
+
+    /**
+     * An additional parameter associated with the TLV.
+     *
+     * Generally, unused and equal to zero. In the case of, e.g., `BITSTRING`, it
+     * is set to the number of 'unused bits'.
+     */
     uint32_t param;
+
+    /**
+     * Pointer to the first byte of TLV's raw contents in memory.
+     *
+     * NOTE: this pointer is valid only for the lifetime of the parent data block.
+     * WARNING: this is not a null-terminated C string. Do not use `printf` format
+     * specifier "%s" to dump its contents.
+     */
     const uint8_t *start;
+
+    /**
+     * Pointer to a byte just past the end of TLV's raw contents in memory.
+     *
+     * The contents of a TLV span (left-inclusive, right-exclusive) between:
+     * [start, end).
+     *
+     *           ╔─ CONTENTS ───────────────────────╗
+     * ┌────┬────║────┬────┬────┬────┬────┬────┬────║────┬────┬────┬────┐
+     * │ 05 │ 93 ║ 1a │ e6 │ 14 │ 06 │ c5 │ 00 │ 7f ║ ff │ 80 │ 1f │ 00 │
+     * └────┴────╚─┬──┴────┴────┴────┴────┴────┴────╝─┬──┴────┴────┴────┘
+     *             │                                  │
+     *             ⇑                                  ⇑
+     *           start                               end
+     *
+     ***********************************************************************
+     *
+     * WARNING: this pointer cannot be dereferenced. The last valid byte of
+     * contents is located at `(end - 1)`, not `end` itself.
+     */
     const uint8_t *end;
   } derdec_tlv;
 
+  /**
+   * Returns a string representation for the given TLV `type`.
+   *
+   * For example, returns "SEQUENCE" for `DERDEC_TLV_SEQUENCE` (0x30).
+   *
+   * NOTE: an empty string ("") is returned for invalid/unrecognized type values.
+   */
   const char *derdec_tlv_type_str(enum derdec_tlv_type type);
 
+  /**
+   * Decodes a range of bytes, `[*data_curr, data_end)`, as an ASN.1 DER-encoded
+   * TLV item.
+   * `data_curr` is a pointer to a variable, which itself contains a pointer to
+   * the beginning of a (presumed) TLV.
+   * `data_end` is a pointer to the end (or, byte just past the end) of a buffer.
+   * Hence, the decoder is going to start at `*data_curr`, and if it ever reaches
+   * `data_end` 'in the middle' of a TLV, it is going to fail with `DERDEC_EOF`.
+   *
+   * On success, the decoded TLV is saved in `result`, and `DERDEC_OK` (0) is
+   * returned.
+   * Additionally, `data_curr` is updated with a pointer to the byte just past the
+   * end of this TLV. In other words, `data_curr` is set to what might be the
+   * beginning of the next TLV. Due to this behavior, this function can be called
+   * repeatedly in order to decode a list of consecutive TLV's within a
+   * bytestream.
+   *
+   * On error, returns a non-zero value (see `enum derdec_err` and
+   * `derdec_err_str`).
+   *
+   * NOTE: if `result` == NULL, `data_curr` == NULL, `*data_curr == NULL`, or
+   * `data_end` == 0, an error is returned.
+   *
+   * NOTE: if `result` != NULL, and an error occurs while decoding, contents of
+   * `result` are zeroed out explicitly.
+   */
   derdec_err derdec_decode_tlv(derdec_tlv *result, const uint8_t **data_curr,
                                const uint8_t *data_end);
 
   /* -------------------------------------------------- */
 
+  /**
+   * Representation of a parsed public key.
+   */
   typedef struct derdec_pkey
   {
     derdec_tlv object_id;
@@ -231,18 +339,80 @@ extern "C"
     derdec_tlv exponent;
   } derdec_pkey;
 
+  /**
+   * Returns a pointer to (raw bytes of) the modulus of public key `pkey`, or NULL
+   * if `pkey` is invalid.
+   *
+   * NOTE: see `derdec_pkey_modulus_size` to know how many bytes can be accessed.
+   */
   const uint8_t *derdec_pkey_modulus(const derdec_pkey *const pkey);
+
+  /**
+   * Returns the size of the modulus of public key `pkey`, or 0 if `pkey` is
+   * invalid.
+   */
   size_t derdec_pkey_modulus_size(const derdec_pkey *const pkey);
+
+  /**
+   * Returns a pointer to (raw bytes of) the exponent of public key `pkey`, or
+   * NULL if `pkey` is invalid.
+   *
+   * NOTE: see `derdec_pkey_exponent_size` to know how many bytes can be accessed.
+   */
   const uint8_t *derdec_pkey_exponent(const derdec_pkey *const pkey);
+
+  /**
+   * Returns the size of the exponent of public key `pkey`, or 0 if `pkey` is
+   * invalid.
+   */
   size_t derdec_pkey_exponent_size(const derdec_pkey *const pkey);
 
+  /**
+   * Returns whether a PKCS#1 'OBJECT' object identifier signature could be found
+   * in the encoded public key `pkey`.
+   *
+   * Signature: [2a 86 48 86 f7 0d 01 01 01]
+   * (see: page 55, RFC 3447)
+   */
   bool derdec_pkey_is_pkcs1(const derdec_pkey *const pkey);
 
+  /**
+   * Decodes a stream of bytes, `data`, of length `data_len`, as an ASR.1
+   * DER-encoded RSA public key.
+   *
+   * On success, the result is saved in `result`, and `DERDEC_OK` (0) is returned.
+   * On error, returns a non-zero value (see `enum derdec_err` and
+   * `derdec_err_str`).
+   *
+   * NOTE: if `result` == NULL, `data` == NULL, or `data_len` == 0, an error is
+   * returned.
+   *
+   * NOTE: if `result` != NULL, and an error occurs while parsing, contents of
+   * `result` are zeroed out explicitly.
+   */
   derdec_err derdec_decode_pkey(derdec_pkey *result, const uint8_t *data,
                                 size_t data_len);
 
   /* -------------------------------------------------- */
 
+  /**
+   * Encodes byte array `plaintext` of length `plaintext_len` as a valid PKCS#1
+   * v1.5-padded RSA input, and saves the encoded (not encrypted!) result in
+   * buffer `buf` of length `buf_len` (i.e., only so many bytes can be stored in
+   * the buffer).
+   * Although `prng_seed` is an optional parameter (pass 0 by default), ideally it
+   * should be a 32-bit cryptographically secure source of entropy.
+   *
+   * On success, the result is saved in `buf`, and `DERDEC_OK` (0) is returned.
+   * On error, returns a non-zero value (see `enum derdec_err` and
+   * `derdec_err_str`).
+   *
+   * NOTE: if `buf` == NULL, `buf_len` == 0, `plaintext` == NULL, or
+   * `plaintext_len` == 0, an error is returned.
+   *
+   * NOTE: if `buf` != NULL (and `buf_len` > 0), and an error occurs while
+   * encoding, contents of `buf` are zeroed out explicitly.
+   */
   derdec_err derdec_pkcs1(uint8_t *buf, size_t buf_len, const uint8_t *plaintext,
                           size_t plaintext_len, uint32_t prng_seed);
 
@@ -323,12 +493,17 @@ extern "C"
   derdec_err derdec_decode_tlv(derdec_tlv *result, const uint8_t **data_curr,
                                const uint8_t *data_end)
   {
-    if (result == NULL || data_curr == NULL || data_end == NULL)
+    if (result == NULL)
     {
       return DERDEC_MISUSE;
     }
 
     memset(result, 0, sizeof(*result));
+
+    if (data_curr == NULL || data_end == NULL)
+    {
+      return DERDEC_MISUSE;
+    }
 
     const uint8_t *curr = *data_curr;
     if (curr == NULL || curr >= data_end)
@@ -518,12 +693,17 @@ extern "C"
   derdec_err derdec_decode_pkey(derdec_pkey *result, const uint8_t *data,
                                 size_t data_len)
   {
-    if (result == NULL || data == NULL || data_len == 0)
+    if (result == NULL)
     {
       return DERDEC_MISUSE;
     }
 
     memset(result, 0, sizeof(*result));
+
+    if (data == NULL || data_len == 0)
+    {
+      return DERDEC_MISUSE;
+    }
 
     const uint8_t *data_curr = data;
     const uint8_t *const data_end = (data + data_len);
@@ -649,7 +829,14 @@ extern "C"
   derdec_err derdec_pkcs1(uint8_t *buf, size_t buf_len, const uint8_t *plaintext,
                           size_t plaintext_len, uint32_t prng_seed)
   {
-    if (buf == NULL || buf_len == 0 || plaintext == NULL || plaintext_len == 0)
+    if (buf == NULL || buf_len == 0)
+    {
+      return DERDEC_MISUSE;
+    }
+
+    memset(buf, 0, buf_len);
+
+    if (plaintext == NULL || plaintext_len == 0)
     {
       return DERDEC_MISUSE;
     }
