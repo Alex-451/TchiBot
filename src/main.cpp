@@ -8,7 +8,6 @@
 #include <tchibo_wrapper.h>
 #include <sstream>
 #include <iostream>
-#include <hex_utils.h>
 
 #pragma region JSON
 
@@ -286,8 +285,9 @@ void setup()
   // Encryption START
   // ------------------------------------------------
 
-  if (strlen(encryptedUserName) == 0)
+  if (strlen(encryptedUserName) == 0 || strlen(encryptedPassword) == 0)
   {
+    Serial.println("Encrypt");
     derdec_pkey pkey;
 
     derdec_err err;
@@ -301,8 +301,8 @@ void setup()
       fprintf(stderr, "[!] pkey is not a PKCS1 public key\n");
     }
 
-    // ------------------------------------------------
-
+    // Username encryption
+    String result = "";
     uint8_t buf[256];
     if (encrypt_with_bear(buf, sizeof(buf), userName, strlen(userName), &pkey) != 0)
     {
@@ -311,29 +311,24 @@ void setup()
 
     for (size_t i = 0; i < sizeof(buf); ++i)
     {
-      Serial.printf("%02x", buf[i]);
+      result += String(buf[i], HEX);
     }
-    Serial.printf("\n");
 
-    char hexstr[sizeof(buf) * 2 + 1];
-    if (bytes_to_hex(hexstr, sizeof(hexstr), buf, sizeof(buf)) == 0)
+    strncpy(encryptedUserName, result.c_str(), sizeof(encryptedUserName));
+
+    // Password encryption
+    result = "";
+    if (encrypt_with_bear(buf, sizeof(buf), password, strlen(password), &pkey) != 0)
     {
-      Serial.printf("oh no!\n");
+      fprintf(stderr, "[!] encrypt_with_bear failed\n");
     }
-    printf("%s\n", hexstr);
 
-    // strncpy(encryptedUserName, hexstr, sizeof(encryptedUserName));
+    for (size_t i = 0; i < sizeof(buf); ++i)
+    {
+      result += String(buf[i], HEX);
+    }
 
-    // printf("%s\n", encryptedUserName);
-
-    /*
-      char hexstr[513];
-      if (bytes_to_hex(hexstr, sizeof(hexstr), buf, sizeof(buf)) == 0)
-      {
-        fprintf(stderr, "oh no!\n");
-      }
-      printf("%s\n", hexstr);*/
-    // strncpy(encryptedUserName, hexstr, sizeof(encryptedUserName));
+    strncpy(encryptedPassword, result.c_str(), sizeof(encryptedPassword));
   }
 
   // ------------------------------------------------
