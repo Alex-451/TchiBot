@@ -1,13 +1,8 @@
 #include "WiFiManager.h" // https://github.com/tzapu/WiFiManager
 #include <FS.h>          // File System
 #include <ArduinoJson.h> // Arduino JSON
-#include <ESP8266WiFi.h>
-#include <BearSSLHelpers.h>
-#include <bearssl/bearssl.h>
 #include <derdec.h>
 #include <tchibo_wrapper.h>
-#include <sstream>
-#include <iostream>
 
 #pragma region JSON
 
@@ -16,6 +11,7 @@
 
 // Flag for saving data
 bool isSavingConfig = false;
+bool forceConfig = false;
 
 // Variables to hold data
 char userName[50] = "";
@@ -121,6 +117,62 @@ void configModeCallback(WiFiManager *wifiManager)
   Serial.println(WiFi.softAPIP());
 }
 
+void setup_networkmanager()
+{
+  WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
+
+  // WiFiManager, Local intialization. Once its business is done, there is no need to keep it around
+  WiFiManager wm;
+
+  // reset settings - wipe stored credentials for testing
+  // these are stored by the esp library
+  wm.resetSettings();
+
+  // Set config save notify callback
+  wm.setSaveConfigCallback(saveConfigCallback);
+
+  // Set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
+  wm.setAPCallback(configModeCallback);
+
+  // Custom parameters
+  // id/name, placeholder/prompt, default, length
+  WiFiManagerParameter tchibo_user_name("user_name", "Tchibo phone number/EMail address", userName, 50);
+  WiFiManagerParameter tchibo_password("password", "Tchibo password", password, 50);
+
+  wm.addParameter(&tchibo_user_name);
+  wm.addParameter(&tchibo_password);
+
+  if (forceConfig)
+  {
+    if (!wm.startConfigPortal("TchiboAP", "TchiboMobile"))
+    {
+      Serial.println("failed to connect and hit timeout");
+      delay(3000);
+      // reset and try again, or maybe put it to deep sleep
+      ESP.restart();
+      delay(5000);
+    }
+  }
+  else
+  {
+    if (!wm.autoConnect("TchiboAP", "TchiboMobile"))
+    {
+      Serial.println("failed to connect and hit timeout");
+      delay(3000);
+      // if we still have not connected restart and try all over again
+      ESP.restart();
+      delay(5000);
+    }
+  }
+
+  // If we get here, we are connected to the WiFi
+  Serial.println("WiFi connected");
+
+  // Copy the string value
+  strncpy(userName, tchibo_user_name.getValue(), sizeof(userName));
+  strncpy(password, tchibo_password.getValue(), sizeof(password));
+}
+
 #pragma endregion
 
 #pragma region ENCRYPT
@@ -185,106 +237,8 @@ int encrypt_with_bear(uint8_t *buf, size_t buf_len, const char *const plaintext,
   return 0;
 }
 
-#pragma endregion
-
-void setup()
+void encrypt_credentials()
 {
-
-  // ------------------------------------------------
-  // WiFi & File system setup START
-  // ------------------------------------------------
-
-  bool forceConfig = false;
-
-  bool spiffsSetup = loadConfig();
-  if (!spiffsSetup)
-  {
-    Serial.println(F("Forcing config mode as there is no saved config"));
-    forceConfig = true;
-  }
-
-  WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
-
-  // put your setup code here, to run once:
-  Serial.begin(115200);
-
-  // WiFiManager, Local intialization. Once its business is done, there is no need to keep it around
-  WiFiManager wm;
-
-  // reset settings - wipe stored credentials for testing
-  // these are stored by the esp library
-  wm.resetSettings();
-
-  // Set config save notify callback
-  wm.setSaveConfigCallback(saveConfigCallback);
-
-  // Set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
-  wm.setAPCallback(configModeCallback);
-
-  // Custom parameters
-  // id/name, placeholder/prompt, default, length
-  WiFiManagerParameter tchibo_user_name("user_name", "Tchibo phone number/EMail address", userName, 50);
-  WiFiManagerParameter tchibo_password("password", "Tchibo password", password, 50);
-
-  wm.addParameter(&tchibo_user_name);
-  wm.addParameter(&tchibo_password);
-
-  if (forceConfig)
-  {
-    if (!wm.startConfigPortal("TchiboAP", "TchiboMobile"))
-    {
-      Serial.println("failed to connect and hit timeout");
-      delay(3000);
-      // reset and try again, or maybe put it to deep sleep
-      ESP.restart();
-      delay(5000);
-    }
-  }
-  else
-  {
-    if (!wm.autoConnect("TchiboAP", "TchiboMobile"))
-    {
-      Serial.println("failed to connect and hit timeout");
-      delay(3000);
-      // if we still have not connected restart and try all over again
-      ESP.restart();
-      delay(5000);
-    }
-  }
-
-  // If we get here, we are connected to the WiFi
-  Serial.println("WiFi connected");
-
-  // Copy the string value
-  strncpy(userName, tchibo_user_name.getValue(), sizeof(userName));
-  strncpy(password, tchibo_password.getValue(), sizeof(password));
-
-  // ------------------------------------------------
-  // WiFi & File system setup END
-  // ------------------------------------------------
-
-  // ------------------------------------------------
-  // ClientSessionID creation START
-  // ------------------------------------------------
-
-  srand(time(NULL));
-
-  char sid[40];
-  if (tchibo_get_client_session_id(sid, sizeof(sid)) != 0)
-  {
-    fprintf(stderr, "oh no.\n");
-  }
-
-  printf("%s\n", sid);
-
-  // ------------------------------------------------
-  // ClientSessionID creation END
-  // ------------------------------------------------
-
-  // ------------------------------------------------
-  // Encryption START
-  // ------------------------------------------------
-
   if (strlen(encryptedUserName) == 0 || strlen(encryptedPassword) == 0)
   {
     Serial.println("Encrypt");
@@ -330,10 +284,46 @@ void setup()
 
     strncpy(encryptedPassword, result.c_str(), sizeof(encryptedPassword));
   }
+}
+
+#pragma endregion
+
+void setup()
+{
+  Serial.begin(115200);
 
   // ------------------------------------------------
-  // Encryption END
+  // WiFi & File system setup
   // ------------------------------------------------
+
+  bool spiffsSetup = loadConfig();
+  if (!spiffsSetup)
+  {
+    Serial.println(F("Forcing config mode as there is no saved config"));
+    forceConfig = true;
+  }
+
+  setup_networkmanager();
+
+  // ------------------------------------------------
+  // ClientSessionID creation
+  // ------------------------------------------------
+
+  srand(time(NULL));
+
+  char sid[40];
+  if (tchibo_get_client_session_id(sid, sizeof(sid)) != 0)
+  {
+    fprintf(stderr, "oh no.\n");
+  }
+
+  printf("%s\n", sid);
+
+  // ------------------------------------------------
+  // Encryption START
+  // ------------------------------------------------
+
+  encrypt_credentials();
 
   // Save the custom parameters to FS
   if (isSavingConfig)

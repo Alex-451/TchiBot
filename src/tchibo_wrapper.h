@@ -27,7 +27,7 @@ extern "C"
 
     int tchibo_get_client_session_id(char *buf, size_t buf_len);
     char *tchibo_get_public_key();
-    tchibo_login_result tchibo_login_by_password(char username[512], char password[512]);
+    tchibo_login_result tchibo_login_by_password(char username[513], char password[513], char client_session_id[39]);
 
     /* ================================================== */
     /* ================================================== */
