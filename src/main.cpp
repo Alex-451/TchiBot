@@ -1,5 +1,5 @@
 #include "WiFiManager.h" // https://github.com/tzapu/WiFiManager
-#include <FS.h>          // File System
+#include "LittleFS.h"    // File System
 #include <ArduinoJson.h> // Arduino JSON
 #include <derdec.h>
 #include <tchibo_wrapper.h>
@@ -32,7 +32,7 @@ void saveConfig()
   json["encryptedPassword"] = encryptedPassword;
 
   // Open config file
-  File configFile = SPIFFS.open(JSON_CONFIG_FILE, "w");
+  File configFile = LittleFS.open(JSON_CONFIG_FILE, "w");
   if (!configFile)
   {
     // Error, file did not open
@@ -56,13 +56,13 @@ bool loadConfig()
   // SPIFFS.format();
   Serial.println("Mounting file system...");
 
-  if (SPIFFS.begin())
+  if (LittleFS.begin())
   {
     Serial.println("Mounted file system");
-    if (SPIFFS.exists(JSON_CONFIG_FILE))
+    if (LittleFS.exists(JSON_CONFIG_FILE))
     {
       Serial.println("Reading config file");
-      File configFile = SPIFFS.open(JSON_CONFIG_FILE, "r");
+      File configFile = LittleFS.open(JSON_CONFIG_FILE, "r");
       if (configFile)
       {
         Serial.println("Opened configuration");
@@ -78,8 +78,6 @@ bool loadConfig()
           strcpy(password, json["password"]);
           strcpy(encryptedUserName, json["encryptedUserName"]);
           strcpy(encryptedPassword, json["encryptedPassword"]);
-          //*encryptedUserName = json["encryptedUserName"];
-          //*encryptedPassword = json["encryptedPassword"];
 
           return true;
         }
