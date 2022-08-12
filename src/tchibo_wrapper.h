@@ -18,16 +18,17 @@ extern "C"
     typedef struct tchibo_login_result
     {
         bool success;
-        char hand_shake_token[36];
-        char security_token[36];
+        String hand_shake_token;
+        String security_token;
         bool login_success;
         bool dispatch_success_message;
         bool interested_customer_cookie_flag;
     } tchibo_login_result;
 
     int tchibo_get_client_session_id(char *buf, size_t buf_len);
-    char *tchibo_get_public_key();
-    tchibo_login_result tchibo_login_by_password(char username[513], char password[513], char client_session_id[39]);
+    String tchibo_get_public_key(String client_session_id);
+    tchibo_login_result tchibo_login_by_password(String encryptedUsername, String encryptedPassword, String client_session_id);
+    String test();
 
     /* ================================================== */
     /* ================================================== */
@@ -78,6 +79,96 @@ extern "C"
         buf[39] = '\0';
 
         return 0;
+    }
+
+    tchibo_login_result tchibo_login_by_password(String encryptedUsername, String encryptedPassword, String client_session_id)
+    {
+        tchibo_login_result result;
+        if (https.begin(*client, "https://public-service.tchibo-mobil.de/loginservice/jsp/service.jsp"))
+        {
+            String payload = String("action=submitLoginFormLoginByPassword&clientSessionID=") + client_session_id + "&" + "username=" + encryptedUsername + "&" + "password=" + encryptedPassword;
+            int httpCode = https.POST(payload);
+            Serial.print("httpCode:");
+            Serial.printf("%d \n", httpCode);
+            if (httpCode > 0)
+            {
+                if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY)
+                {
+                    String response = https.getString();
+
+                    DynamicJsonDocument doc(384);
+                    DeserializationError error = deserializeJson(doc, response);
+                    if (error)
+                    {
+                        Serial.print("deserializeJson() failed: ");
+                        Serial.println(error.c_str());
+                    }
+                    else
+                    {
+                        result.success = doc["success"];
+                        result.hand_shake_token = String(doc["handShakeToken"].as<char *>());
+                        result.security_token = String(doc["securityToken"].as<char *>());
+                        result.login_success = doc["loginSuccess"];
+                        result.dispatch_success_message = doc["dispatchSuccessMessage"];
+                        result.interested_customer_cookie_flag = doc["interestedCustomerCookieFlag"];
+                    }
+                }
+            }
+            else
+            {
+                Serial.print("invalid httpCode\n");
+            }
+
+            https.end();
+        }
+        else
+        {
+            Serial.print("No connection\n");
+        }
+
+        return result;
+    }
+
+    String test()
+    {
+        String result;
+        if (https.begin(*client, "https://api.chucknorris.io/jokes/random"))
+        {
+            int httpCode = https.GET();
+            Serial.print("httpCode:");
+            Serial.printf("%d \n", httpCode);
+            if (httpCode > 0)
+            {
+                if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY)
+                {
+                    String response = https.getString();
+
+                    DynamicJsonDocument doc(384);
+                    DeserializationError error = deserializeJson(doc, response);
+                    if (error)
+                    {
+                        Serial.print("deserializeJson() failed: ");
+                        Serial.println(error.c_str());
+                    }
+                    else
+                    {
+                        result = String(doc["success"].as<char *>());
+                    }
+                }
+            }
+            else
+            {
+                Serial.print("invalid httpCode\n");
+            }
+
+            https.end();
+        }
+        else
+        {
+            Serial.print("No connection\n");
+        }
+
+        return result;
     }
 
 #endif // TCHIBO_NO_IMPL

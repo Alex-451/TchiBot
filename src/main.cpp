@@ -1,4 +1,5 @@
 #include "WiFiManager.h" // https://github.com/tzapu/WiFiManager
+#include <DNSServer.h>
 #include "LittleFS.h"    // File System
 #include <ArduinoJson.h> // Arduino JSON
 #include <derdec.h>
@@ -14,10 +15,15 @@ bool isSavingConfig = false;
 bool forceConfig = false;
 
 // Variables to hold data
-char userName[50] = "";
-char password[50] = "";
-char encryptedUserName[513] = "";
-char encryptedPassword[513] = "";
+// char userName[50] = "";
+// char password[50] = "";
+// char encryptedUserName[513] = "";
+// char encryptedPassword[513] = "";#
+
+String userName;
+String password;
+String encryptedUserName;
+String encryptedPassword;
 
 void saveConfig()
 {
@@ -74,10 +80,15 @@ bool loadConfig()
         {
           Serial.println("Parsing JSON");
 
-          strcpy(userName, json["userName"]);
-          strcpy(password, json["password"]);
-          strcpy(encryptedUserName, json["encryptedUserName"]);
-          strcpy(encryptedPassword, json["encryptedPassword"]);
+          // strcpy(userName, json["userName"]);
+          // strcpy(password, json["password"]);
+          // strcpy(encryptedUserName, json["encryptedUserName"]);
+          // strcpy(encryptedPassword, json["encryptedPassword"]);
+
+          userName = String(json["userName"].as<char *>());
+          password = String(json["password"].as<char *>());
+          encryptedUserName = String(json["encryptedUserName"].as<char *>());
+          encryptedPassword = String(json["encryptedPassword"].as<char *>());
 
           return true;
         }
@@ -117,6 +128,7 @@ void configModeCallback(WiFiManager *wifiManager)
 
 void setup_networkmanager()
 {
+  Serial.setDebugOutput(true);
   WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
 
   // WiFiManager, Local intialization. Once its business is done, there is no need to keep it around
@@ -134,8 +146,8 @@ void setup_networkmanager()
 
   // Custom parameters
   // id/name, placeholder/prompt, default, length
-  WiFiManagerParameter tchibo_user_name("user_name", "Tchibo phone number/EMail address", userName, 50);
-  WiFiManagerParameter tchibo_password("password", "Tchibo password", password, 50);
+  WiFiManagerParameter tchibo_user_name("user_name", "Tchibo phone number/EMail address", userName.c_str(), 50);
+  WiFiManagerParameter tchibo_password("password", "Tchibo password", password.c_str(), 50);
 
   wm.addParameter(&tchibo_user_name);
   wm.addParameter(&tchibo_password);
@@ -167,8 +179,8 @@ void setup_networkmanager()
   Serial.println("WiFi connected");
 
   // Copy the string value
-  strncpy(userName, tchibo_user_name.getValue(), sizeof(userName));
-  strncpy(password, tchibo_password.getValue(), sizeof(password));
+  userName = String(tchibo_user_name.getValue());
+  password = String(tchibo_password.getValue());
 }
 
 #pragma endregion
@@ -237,7 +249,7 @@ int encrypt_with_bear(uint8_t *buf, size_t buf_len, const char *const plaintext,
 
 void encrypt_credentials()
 {
-  if (strlen(encryptedUserName) == 0 || strlen(encryptedPassword) == 0)
+  if (encryptedUserName.length() == 0 || encryptedPassword.length() == 0)
   {
     Serial.println("Encrypt");
     derdec_pkey pkey;
@@ -256,7 +268,7 @@ void encrypt_credentials()
     // Username encryption
     String result = "";
     uint8_t buf[256];
-    if (encrypt_with_bear(buf, sizeof(buf), userName, strlen(userName), &pkey) != 0)
+    if (encrypt_with_bear(buf, sizeof(buf), userName.c_str(), userName.length(), &pkey) != 0)
     {
       fprintf(stderr, "[!] encrypt_with_bear failed\n");
     }
@@ -266,11 +278,11 @@ void encrypt_credentials()
       result += String(buf[i], HEX);
     }
 
-    strncpy(encryptedUserName, result.c_str(), sizeof(encryptedUserName));
+    encryptedUserName += result;
 
     // Password encryption
     result = "";
-    if (encrypt_with_bear(buf, sizeof(buf), password, strlen(password), &pkey) != 0)
+    if (encrypt_with_bear(buf, sizeof(buf), password.c_str(), password.length(), &pkey) != 0)
     {
       fprintf(stderr, "[!] encrypt_with_bear failed\n");
     }
@@ -280,7 +292,7 @@ void encrypt_credentials()
       result += String(buf[i], HEX);
     }
 
-    strncpy(encryptedPassword, result.c_str(), sizeof(encryptedPassword));
+    encryptedPassword += result;
   }
 }
 
@@ -318,16 +330,29 @@ void setup()
   printf("%s\n", sid);
 
   // ------------------------------------------------
-  // Encryption START
+  // Encryption
   // ------------------------------------------------
 
   encrypt_credentials();
 
-  // Save the custom parameters to FS
+  // ------------------------------------------------
+  // Save custom params
+  // ------------------------------------------------
+
   if (isSavingConfig)
   {
     saveConfig();
   }
+
+  // ------------------------------------------------
+  // Tchibo API calls
+  // ------------------------------------------------
+
+  // tchibo_login_result login_result = tchibo_login_by_password(encryptedUserName, encryptedPassword, sid);
+  // Serial.println("Security Token:");
+  // Serial.println(login_result.security_token);
+  Serial.println("Chuck:");
+  Serial.println(test());
 }
 
 void loop()
