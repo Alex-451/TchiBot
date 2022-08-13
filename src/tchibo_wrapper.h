@@ -2,7 +2,7 @@
 #define TCHIBO_WRAPPER_H
 
 #include <ESP8266HTTPClient.h>
-#include <WiFiClientSecureBearSSL.h>
+#include <WiFiClientSecure.h>
 
 using namespace std;
 using namespace BearSSL;
@@ -26,9 +26,7 @@ extern "C"
     } tchibo_login_result;
 
     int tchibo_get_client_session_id(char *buf, size_t buf_len);
-    String tchibo_get_public_key(String client_session_id);
     tchibo_login_result tchibo_login_by_password(String encryptedUsername, String encryptedPassword, String client_session_id);
-    String test();
 
     /* ================================================== */
     /* ================================================== */
@@ -36,8 +34,8 @@ extern "C"
 
 #ifndef TCHIBO_NO_IMPL
 
-    HTTPClient https;
-    unique_ptr<WiFiClientSecure> client(new WiFiClientSecure);
+    WiFiClientSecure client;
+    HTTPClient http;
 
     int tchibo_get_client_session_id(char *buf, size_t buf_len)
     {
@@ -83,24 +81,26 @@ extern "C"
 
     tchibo_login_result tchibo_login_by_password(String encryptedUsername, String encryptedPassword, String client_session_id)
     {
+        client.setInsecure();
         tchibo_login_result result;
-        if (https.begin(*client, "https://public-service.tchibo-mobil.de/loginservice/jsp/service.jsp"))
+        if (http.begin(client, "https://public-service.tchibo-mobil.de/loginservice/jsp/service.jsp"))
         {
+            http.addHeader("Content-Type", "application/x-www-form-urlencoded");
             String payload = String("action=submitLoginFormLoginByPassword&clientSessionID=") + client_session_id + "&" + "username=" + encryptedUsername + "&" + "password=" + encryptedPassword;
-            int httpCode = https.POST(payload);
-            Serial.print("httpCode:");
-            Serial.printf("%d \n", httpCode);
+
+            int httpCode = http.POST(payload);
+
             if (httpCode > 0)
             {
                 if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY)
                 {
-                    String response = https.getString();
-
+                    String response = http.getString();
+                    Serial.println(response);
                     DynamicJsonDocument doc(384);
                     DeserializationError error = deserializeJson(doc, response);
                     if (error)
                     {
-                        Serial.print("deserializeJson() failed: ");
+                        Serial.print("deserialization failed: ");
                         Serial.println(error.c_str());
                     }
                     else
@@ -116,52 +116,10 @@ extern "C"
             }
             else
             {
-                Serial.print("invalid httpCode\n");
+                Serial.print("Invalid httpCode\n");
             }
 
-            https.end();
-        }
-        else
-        {
-            Serial.print("No connection\n");
-        }
-
-        return result;
-    }
-
-    String test()
-    {
-        String result;
-        if (https.begin(*client, "https://api.chucknorris.io/jokes/random"))
-        {
-            int httpCode = https.GET();
-            Serial.print("httpCode:");
-            Serial.printf("%d \n", httpCode);
-            if (httpCode > 0)
-            {
-                if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY)
-                {
-                    String response = https.getString();
-
-                    DynamicJsonDocument doc(384);
-                    DeserializationError error = deserializeJson(doc, response);
-                    if (error)
-                    {
-                        Serial.print("deserializeJson() failed: ");
-                        Serial.println(error.c_str());
-                    }
-                    else
-                    {
-                        result = String(doc["success"].as<char *>());
-                    }
-                }
-            }
-            else
-            {
-                Serial.print("invalid httpCode\n");
-            }
-
-            https.end();
+            http.end();
         }
         else
         {

@@ -268,6 +268,7 @@ void encrypt_credentials()
     // Username encryption
     String result = "";
     uint8_t buf[256];
+    encryptedUserName = String("");
     if (encrypt_with_bear(buf, sizeof(buf), userName.c_str(), userName.length(), &pkey) != 0)
     {
       fprintf(stderr, "[!] encrypt_with_bear failed\n");
@@ -275,13 +276,16 @@ void encrypt_credentials()
 
     for (size_t i = 0; i < sizeof(buf); ++i)
     {
+      if (buf[i] < 15)
+        result += "0";
+
       result += String(buf[i], HEX);
     }
-
-    encryptedUserName += result;
+    encryptedUserName = result;
 
     // Password encryption
     result = "";
+    encryptedPassword = String("");
     if (encrypt_with_bear(buf, sizeof(buf), password.c_str(), password.length(), &pkey) != 0)
     {
       fprintf(stderr, "[!] encrypt_with_bear failed\n");
@@ -289,10 +293,12 @@ void encrypt_credentials()
 
     for (size_t i = 0; i < sizeof(buf); ++i)
     {
+      if (buf[i] < 15)
+        result += "0";
+
       result += String(buf[i], HEX);
     }
-
-    encryptedPassword += result;
+    encryptedPassword = result;
   }
 }
 
@@ -348,11 +354,9 @@ void setup()
   // Tchibo API calls
   // ------------------------------------------------
 
-  // tchibo_login_result login_result = tchibo_login_by_password(encryptedUserName, encryptedPassword, sid);
-  // Serial.println("Security Token:");
-  // Serial.println(login_result.security_token);
-  Serial.println("Chuck:");
-  Serial.println(test());
+  tchibo_login_result login_result = tchibo_login_by_password(encryptedUserName, encryptedPassword, sid);
+  Serial.println("Security Token:");
+  Serial.println(login_result.security_token);
 }
 
 void loop()
