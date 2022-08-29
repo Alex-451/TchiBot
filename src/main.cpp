@@ -357,6 +357,10 @@ void setup()
   tchibo_login_result login_result = tchibo_login_by_password(encryptedUserName, encryptedPassword, sid);
   Serial.println("Security Token:");
   Serial.println(login_result.security_token);
+
+  tchibo_tarif_status taruf_result = tchibo_get_tarif_status(sid, login_result.security_token);
+  Serial.println("Free space:");
+  Serial.println(taruf_result.used_percent);
 }
 
 void loop()
