@@ -4,6 +4,14 @@
 #include <ArduinoJson.h> // Arduino JSON
 #include <derdec.h>
 #include <tchibo_wrapper.h>
+#include <SPI.h>
+#include "epd4in2b_V2.h"
+#include "epdpaint.h"
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+
+#define COLORED 0
+#define UNCOLORED 1
 
 #pragma region JSON
 
@@ -136,7 +144,7 @@ void setup_networkmanager()
 
   // reset settings - wipe stored credentials for testing
   // these are stored by the esp library
-  wm.resetSettings();
+  //wm.resetSettings();
 
   // Set config save notify callback
   wm.setSaveConfigCallback(saveConfigCallback);
@@ -361,6 +369,51 @@ void setup()
   tchibo_tarif_status taruf_result = tchibo_get_tarif_status(sid, login_result.security_token);
   Serial.println("Free space:");
   Serial.println(taruf_result.used_percent);
+
+  // ------------------------------------------------
+  // Get time
+  // ------------------------------------------------
+
+  WiFiUDP ntpUDP;
+  NTPClient timeClient(ntpUDP);
+  timeClient.setTimeOffset(7200);
+
+  timeClient.begin();
+  timeClient.update();
+
+  String time = String(timeClient.getHours()) + ":" + String(timeClient.getMinutes());
+
+  // ------------------------------------------------
+  // Write to screen
+  // ------------------------------------------------
+
+  Epd epd;
+
+  if (epd.Init() != 0)
+  {
+    Serial.print("e-Paper init failed");
+    return;
+  }
+
+  epd.ClearFrame();
+
+  unsigned char image[1250];
+  Paint paint(image, 200, 50); // width should be the multiple of 8 <--- Causes error
+
+  paint.Clear(UNCOLORED);
+  paint.DrawStringAt(35, 0, taruf_result.used_percent.c_str(), &Font24, COLORED);
+  paint.DrawStringAt(20, 30, time.c_str(), &Font24, COLORED);
+  epd.SetPartialWindowBlack(paint.GetImage(), 140, 150, paint.GetWidth(), paint.GetHeight());
+
+  epd.DisplayFrame();
+
+  epd.Sleep();
+
+  // ------------------------------------------------
+  // Deep sleep
+  // ------------------------------------------------
+
+  ESP.deepSleep(180e7);
 }
 
 void loop()
