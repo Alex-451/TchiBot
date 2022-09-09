@@ -15,6 +15,12 @@ extern "C"
     char tchibo_client_session_id[39];
     char *tchibo_public_key;
 
+    typedef struct tchibo_public_key_result
+    {
+        bool success;
+        String public_key;
+    } tchibo_public_key_result;
+
     typedef struct tchibo_login_result
     {
         bool success;
@@ -37,6 +43,7 @@ extern "C"
     } tchibo_tarif_status;
 
     int tchibo_get_client_session_id(char *buf, size_t buf_len);
+    tchibo_public_key_result tchibo_get_public_key(String client_session_id);
     tchibo_login_result tchibo_login_by_password(String encryptedUsername, String encryptedPassword, String client_session_id);
     tchibo_tarif_status tchibo_get_tarif_status(String client_session_id, String security_token);
 
@@ -89,6 +96,50 @@ extern "C"
         buf[39] = '\0';
 
         return 0;
+    }
+
+    tchibo_public_key_result tchibo_get_public_key(String client_session_id)
+    {
+        client.setInsecure();
+        tchibo_public_key_result result;
+        if (http.begin(client, "https://public-service.tchibo-mobil.de/loginservice/jsp/service.jsp"))
+        {
+            http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+            String payload = String("action=getPublicKey&clientSessionID=") + client_session_id;
+
+            int httpCode = http.POST(payload);
+
+            if (httpCode > 0)
+            {
+                if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY)
+                {
+                    DynamicJsonDocument doc(384);
+                    DeserializationError error = deserializeJson(doc, http.getStream());
+                    if (error)
+                    {
+                        Serial.print("deserialization failed: ");
+                        Serial.println(error.c_str());
+                    }
+                    else
+                    {
+                        result.success = doc["success"];
+                        result.public_key = String(doc["publicKey"].as<char *>());
+                    }
+                }
+            }
+            else
+            {
+                Serial.print("Invalid httpCode\n");
+            }
+
+            http.end();
+        }
+        else
+        {
+            Serial.print("No connection\n");
+        }
+
+        return result;
     }
 
     tchibo_login_result tchibo_login_by_password(String encryptedUsername, String encryptedPassword, String client_session_id)
