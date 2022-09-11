@@ -113,7 +113,7 @@ extern "C"
             {
                 if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY)
                 {
-                    DynamicJsonDocument doc(384);
+                    DynamicJsonDocument doc(768);
                     DeserializationError error = deserializeJson(doc, http.getStream());
                     if (error)
                     {

@@ -11,6 +11,7 @@
 #include <WiFiUdp.h>
 #include <libb64/cdecode.h>
 #include <vector>
+#include <chrono>
 
 #define COLORED 0
 #define UNCOLORED 1
@@ -34,6 +35,7 @@ String userName;
 String password;
 String encryptedUserName;
 String encryptedPassword;
+long encryptionDate;
 
 void saveConfig()
 {
@@ -46,6 +48,7 @@ void saveConfig()
   json["password"] = password;
   json["encryptedUserName"] = encryptedUserName;
   json["encryptedPassword"] = encryptedPassword;
+  json["encryptionDate"] = encryptionDate;
 
   // Open config file
   File configFile = LittleFS.open(JSON_CONFIG_FILE, "w");
@@ -99,6 +102,7 @@ bool loadConfig()
           password = String(json["password"].as<char *>());
           encryptedUserName = String(json["encryptedUserName"].as<char *>());
           encryptedPassword = String(json["encryptedPassword"].as<char *>());
+          encryptionDate = json["encryptionDate"];
 
           return true;
         }
@@ -257,66 +261,67 @@ int encrypt_with_bear(uint8_t *buf, size_t buf_len, const char *const plaintext,
   return 0;
 }
 
-void encrypt_credentials()
+void encrypt_credentials(long current_date, String public_key)
 {
-  if (encryptedUserName.length() == 0 || encryptedPassword.length() == 0)
+  // This will be changed in the future and is only here for testing
+  static uint8_t raw_pkey[350];
+  int ret = base64_decode_chars(public_key.c_str(), strlen(public_key.c_str()), (char *)raw_pkey);
+  const size_t raw_pkey_len = ret;
+
+  derdec_pkey pkey;
+
+  derdec_err err;
+  if ((err = derdec_decode_pkey(&pkey, raw_pkey, raw_pkey_len)) != DERDEC_OK)
   {
-    Serial.println("Encrypt");
-
-    // This will be changed in the future and is only here for testing
-    const char b64input[] = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsw15tJrbXEU435ge8lPfHMJ+ZYUzyWb3O87uR9NhZD6OQg0XPIjP8pfwMjEWTPf/lWAT4SHTMbH05bV6d41MqPG/TM7QIL4NEkH3HlKVT8GUOxviAm1OVaOqaX0YA3+ml8XRd3LvV7jaurSHUTVJxEvFFLFiX6orQTy3ZY0oujXx5z8Ar+9t0sF1I9+NPCVpivBpGkE5L095MOOgHEE7SXNYRt4iGmZTpSSdy31USdudDUDdz3iYhESoGo5IevdRfDSphe31js0kJJaBQsila1/jVjerQ46N3KWdwa3pUN9rdD1dXlospgfm0Rvx+gimL7oTVr9nggXJD1/z6uwXWQIDAQAB";
-    static uint8_t output[350];
-    int ret = base64_decode_chars(b64input, strlen(b64input), (char *)output);
-    const size_t output_len = ret;
-
-    derdec_pkey pkey;
-
-    derdec_err err;
-    if ((err = derdec_decode_pkey(&pkey, output, output_len)) != DERDEC_OK)
-    {
-      fprintf(stderr, "[!] derdec_decode_pkey failed: %s\n", derdec_err_str(err));
-    }
-
-    if (!derdec_pkey_is_pkcs1(&pkey))
-    {
-      fprintf(stderr, "[!] pkey is not a PKCS1 public key\n");
-    }
-
-    // Username encryption
-    String result = "";
-    uint8_t buf[256];
-    encryptedUserName = String("");
-    if (encrypt_with_bear(buf, sizeof(buf), userName.c_str(), userName.length(), &pkey) != 0)
-    {
-      fprintf(stderr, "[!] encrypt_with_bear failed\n");
-    }
-
-    for (size_t i = 0; i < sizeof(buf); ++i)
-    {
-      if (buf[i] <= 15)
-        result += "0";
-
-      result += String(buf[i], HEX);
-    }
-    encryptedUserName = result;
-
-    // Password encryption
-    result = "";
-    encryptedPassword = String("");
-    if (encrypt_with_bear(buf, sizeof(buf), password.c_str(), password.length(), &pkey) != 0)
-    {
-      fprintf(stderr, "[!] encrypt_with_bear failed\n");
-    }
-
-    for (size_t i = 0; i < sizeof(buf); ++i)
-    {
-      if (buf[i] <= 15)
-        result += "0";
-
-      result += String(buf[i], HEX);
-    }
-    encryptedPassword = result;
+    fprintf(stderr, "[!] derdec_decode_pkey failed: %s\n", derdec_err_str(err));
   }
+
+  if (!derdec_pkey_is_pkcs1(&pkey))
+  {
+    fprintf(stderr, "[!] pkey is not a PKCS1 public key\n");
+  }
+
+  // Username encryption
+  String result = "";
+  uint8_t buf[256];
+  encryptedUserName = String("");
+  if (encrypt_with_bear(buf, sizeof(buf), userName.c_str(), userName.length(), &pkey) != 0)
+  {
+    fprintf(stderr, "[!] encrypt_with_bear failed\n");
+  }
+
+  for (size_t i = 0; i < sizeof(buf); ++i)
+  {
+    if (buf[i] <= 15)
+      result += "0";
+
+    result += String(buf[i], HEX);
+  }
+  encryptedUserName = result;
+
+  // Password encryption
+  result = "";
+  encryptedPassword = String("");
+  if (encrypt_with_bear(buf, sizeof(buf), password.c_str(), password.length(), &pkey) != 0)
+  {
+    fprintf(stderr, "[!] encrypt_with_bear failed\n");
+  }
+
+  for (size_t i = 0; i < sizeof(buf); ++i)
+  {
+    if (buf[i] <= 15)
+      result += "0";
+
+    result += String(buf[i], HEX);
+  }
+  encryptedPassword = result;
+
+  // Set encryption date
+
+  Serial.println("Date");
+  Serial.println(current_date);
+
+  encryptionDate = current_date;
 }
 
 #pragma endregion
@@ -353,10 +358,41 @@ void setup()
   printf("%s\n", sid);
 
   // ------------------------------------------------
+  // Get time
+  // ------------------------------------------------
+
+  WiFiUDP ntpUDP;
+  NTPClient timeClient(ntpUDP);
+  timeClient.setTimeOffset(7200);
+
+  timeClient.begin();
+  timeClient.update();
+
+  String time = String(timeClient.getHours()) + ":" + String(timeClient.getMinutes());
+
+  // ------------------------------------------------
   // Encryption
   // ------------------------------------------------
 
-  encrypt_credentials();
+  long current_date = timeClient.getEpochTime();
+
+  Serial.println("current date");
+  Serial.println(current_date);
+
+  Serial.println("Encryption date");
+  Serial.println(encryptionDate);
+
+  Serial.println("Date to refresh key");
+  Serial.println(encryptionDate + 2419200);
+
+  if (encryptedUserName.length() == 0 || encryptedPassword.length() == 0 || encryptionDate == 0 || encryptionDate + 2419200 < current_date)
+  {
+    Serial.println("Encrypt");
+
+    tchibo_public_key_result key = tchibo_get_public_key(sid);
+
+    encrypt_credentials(current_date, key.public_key);
+  }
 
   // ------------------------------------------------
   // Save custom params
@@ -371,26 +407,23 @@ void setup()
   // Tchibo API calls
   // ------------------------------------------------
 
+  Serial.println("Username:");
+  Serial.println(encryptedUserName);
+
+  Serial.println("Password:");
+  Serial.println(encryptedPassword);
+
   tchibo_login_result login_result = tchibo_login_by_password(encryptedUserName, encryptedPassword, sid);
   Serial.println("Security Token:");
   Serial.println(login_result.security_token);
+
+  Serial.println("test 3");
 
   tchibo_tarif_status taruf_result = tchibo_get_tarif_status(sid, login_result.security_token);
   Serial.println("Free space:");
   Serial.println(taruf_result.used_percent);
 
-  // ------------------------------------------------
-  // Get time
-  // ------------------------------------------------
-
-  WiFiUDP ntpUDP;
-  NTPClient timeClient(ntpUDP);
-  timeClient.setTimeOffset(7200);
-
-  timeClient.begin();
-  timeClient.update();
-
-  String time = String(timeClient.getHours()) + ":" + String(timeClient.getMinutes());
+  Serial.println("test 4");
 
   // ------------------------------------------------
   // Write to screen
