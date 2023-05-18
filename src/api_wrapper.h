@@ -15,12 +15,10 @@ extern "C"
 
     typedef struct tchibo_tarif_status_result
     {
-        int current_value;
-        String free_percent;
+        String remaining_data;
+        int remaining_data_in_mb;
+        String extends_on;
         bool is_throttled;
-        int max_value;
-        String used_percent;
-
     } tchibo_tarif_status_result;
 
     tchibo_tarif_status_result tchibo_get_tarif_status();
@@ -39,13 +37,10 @@ extern "C"
     tchibo_tarif_status_result tchibo_get_tarif_status()
     {
         http.useHTTP10(true);
-        //client.setInsecure();
+        client.setInsecure();
         tchibo_tarif_status_result result;
 
-        String test = baseUrl + "/tarifstatus";
-        Serial.println(test);
-
-        if (http.begin(client, test))
+        if (http.begin(client, baseUrl + "/status"))
         {
             int httpCode = http.GET();
             Serial.println(httpCode);
@@ -62,11 +57,10 @@ extern "C"
                     }
                     else
                     {
-                        result.current_value = int(json["currentValue"]);
-                        result.free_percent = json["freePercent"].as<String>();
-                        result.is_throttled = json["isThrottled"];
-                        result.max_value = int(json["maxValue"]);
-                        result.used_percent = json["usedPercent"].as<String>();
+                        result.remaining_data = json["remainingData"].as<String>();
+                        result.remaining_data_in_mb = json["remainingDataInMb"].as<int>();
+                        result.extends_on = json["extendsOn"].as<String>();
+                        result.is_throttled = json["isThrottled"].as<bool>();
                     }
                 }
             }

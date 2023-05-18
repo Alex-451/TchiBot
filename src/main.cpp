@@ -97,7 +97,7 @@ void setup()
   WiFi.mode(WIFI_STA);
 
   WiFiManager wifiManager;
-  // wifiManager.resetSettings();
+  //wifiManager.resetSettings();
 
   WiFiManagerParameter apiBaseUrlParameter("api_server", "API Url", apiBaseUrl.c_str(), 100);
 
@@ -129,8 +129,8 @@ void setup()
   }
 
   baseUrl = apiBaseUrl;
-  Serial.println("bababaiey");
-  Serial.println(tchibo_get_tarif_status().used_percent.c_str());
+
+  tchibo_tarif_status_result result = tchibo_get_tarif_status();
 
   /* This clears the SRAM of the e-paper display */
   epd.ClearFrame();
@@ -146,7 +146,7 @@ void setup()
   paint.SetHeight(64);
 
   paint.Clear(COLORED);
-  // paint.DrawStringAt(0, 0, tchibo_get_tarif_status().used_percent.c_str(), &Font24, UNCOLORED);
+  paint.DrawStringAt(0, 0, result.remaining_data.c_str(), &Font24, UNCOLORED);
   epd.SetPartialWindowRed(paint.GetImage(), 160, 120, paint.GetWidth(), paint.GetHeight());
 
   // Bottom text
@@ -154,7 +154,7 @@ void setup()
   paint.SetHeight(28);
 
   paint.Clear(COLORED);
-  paint.DrawStringAt(20, 4, "Extends on 04.04.2023", &Font24, UNCOLORED);
+  paint.DrawStringAt(20, 4, String("Extends on " + result.extends_on).c_str(), &Font24, UNCOLORED);
   epd.SetPartialWindowRed(paint.GetImage(), 0, 232, paint.GetWidth(), paint.GetHeight());
 
   epd.DisplayFrame();
@@ -165,5 +165,4 @@ void setup()
 
 void loop()
 {
-  Serial.println(tchibo_get_tarif_status().used_percent.c_str());
 }
